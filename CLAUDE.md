@@ -95,6 +95,10 @@ After a page refresh, all events, images, and edit parameters must fully restore
 
 將協作記錄寫入 `AI_COLLABORATION.md`，每筆記錄包含欄位：Prompt、AI 回覆摘要、採用/修改、修改原因、驗證方式。
 
+## GIT 規範
+
+每個 commit 只對「做了什麼」簡短說明而非描述「怎麼做」，內容用繁體中文。
+
 ## Stretch goals (only after core spec is done, in this order)
 
 1. Drag-and-drop an event to change its date
