@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Calendar from "./components/Calendar";
 import DayModal from "./components/DayModal";
-import { fetchEventsByMonth } from "./api";
+import { fetchEventsByMonth, updateEvent } from "./api";
 import { toMonthString } from "./utils/dateUtils";
 
 const now = new Date();
@@ -41,6 +41,30 @@ function App() {
     loadEvents();
   };
 
+  // 階段 5：月曆格子間拖曳事件卡片，放開滑鼠後直接呼叫 PUT 整筆覆寫、僅變更 date 欄位。
+  // PUT /events/{id} 為整筆覆寫，因此需帶上事件原本的其餘欄位，只替換 date。
+  const handleEventDateChange = async (eventId, newDate) => {
+    const event = events.find((item) => item.id === eventId);
+    if (!event) return;
+
+    const payload = {
+      title: event.title,
+      description: event.description,
+      date: newDate,
+      time: event.time,
+      image_type: event.image_type,
+      image_source: event.image_source,
+      image_params: event.image_params,
+    };
+
+    try {
+      await updateEvent(eventId, payload);
+      await loadEvents();
+    } catch (err) {
+      setError(`更新事件日期失敗：${err.message}`);
+    }
+  };
+
   const selectedDateEvents = selectedDate ? events.filter((event) => event.date === selectedDate) : [];
 
   return (
@@ -58,6 +82,7 @@ function App() {
         events={events}
         onChangeMonth={handleChangeMonth}
         onSelectDate={setSelectedDate}
+        onEventDateChange={handleEventDateChange}
       />
 
       {selectedDate && (
