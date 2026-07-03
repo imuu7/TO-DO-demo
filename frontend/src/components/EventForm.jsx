@@ -1,9 +1,7 @@
 import { useState } from "react";
-import CanvasThumbnail from "./CanvasThumbnail";
+import ImageEditor from "./ImageEditor";
 import { createEvent, updateEvent, uploadImage, resolveImageUrl } from "../api";
 
-// 階段 2 尚未實作 Canvas 圖片編輯器（縮放/旋轉/裁切/透明度/亮度對比），
-// 這些欄位留給階段 3；本表單只負責「選圖」，image_params 一律用預設值或沿用原值。
 const DEFAULT_IMAGE_PARAMS = {
   scale: 1,
   rotation: 0,
@@ -14,6 +12,15 @@ const DEFAULT_IMAGE_PARAMS = {
   brightness: 1,
   contrast: 1,
 };
+
+// 補齊缺漏欄位（例如舊資料或後端回傳不完整的 image_params），避免編輯器拿到 undefined
+function normalizeImageParams(params) {
+  return {
+    ...DEFAULT_IMAGE_PARAMS,
+    ...params,
+    crop: { ...DEFAULT_IMAGE_PARAMS.crop, ...params?.crop },
+  };
+}
 
 /**
  * 新增/編輯事件表單。
@@ -34,6 +41,8 @@ export default function EventForm({ defaultDate, initialEvent, onCancel, onSaved
   const [localPreviewSrc, setLocalPreviewSrc] = useState(
     initialEvent ? resolveImageUrl(initialEvent) : null,
   );
+  // 圖片編輯參數：新增時用預設值，編輯時沿用原事件的參數（本階段起兩者都可透過 ImageEditor 修改）
+  const [imageParams, setImageParams] = useState(() => normalizeImageParams(initialEvent?.image_params));
 
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -45,6 +54,7 @@ export default function EventForm({ defaultDate, initialEvent, onCancel, onSaved
     if (!file) return;
 
     setLocalPreviewSrc(URL.createObjectURL(file)); // 先用本機圖片即時預覽，不用等上傳完成
+    setImageParams(normalizeImageParams()); // 換了一張新圖片，舊的裁切/縮放/位移參數不一定還適用，重置為預設值
     setUploading(true);
     setErrorMessage("");
     try {
@@ -97,8 +107,8 @@ export default function EventForm({ defaultDate, initialEvent, onCancel, onSaved
       time: time || null,
       image_type: imageType,
       image_source: imageType === "none" ? null : imageType === "upload" ? uploadedFilename : imageUrl.trim(),
-      // 編輯時沿用原本的 image_params（本表單不提供編輯 UI）；新增時一律用預設值。
-      image_params: isEditing ? initialEvent.image_params : DEFAULT_IMAGE_PARAMS,
+      // 圖片編輯參數一律來自 ImageEditor 目前的即時狀態
+      image_params: imageParams,
     };
 
     setSubmitting(true);
@@ -192,16 +202,8 @@ export default function EventForm({ defaultDate, initialEvent, onCancel, onSaved
 
         {fieldErrors.image && <span className="event-form__error">{fieldErrors.image}</span>}
 
-        {imageType !== "none" && (
-          <div className="event-form__preview">
-            <span className="event-form__hint">預覽：</span>
-            <CanvasThumbnail
-              src={localPreviewSrc}
-              params={isEditing ? initialEvent.image_params : DEFAULT_IMAGE_PARAMS}
-              width={160}
-              height={120}
-            />
-          </div>
+        {imageType !== "none" && localPreviewSrc && (
+          <ImageEditor src={localPreviewSrc} params={imageParams} onChange={setImageParams} />
         )}
       </fieldset>
 

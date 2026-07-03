@@ -406,6 +406,77 @@ textarea {
   color: var(--text-muted);
 }
 
+/* ---------- Image editor（階段 3：Canvas 圖片編輯器） ---------- */
+
+.image-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.image-editor__canvases {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.image-editor__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.image-editor__crop-canvas,
+.image-editor__preview-canvas {
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  border-radius: 6px;
+  cursor: move;
+  background: repeating-conic-gradient(#00000010 0% 25%, transparent 0% 50%) 50% / 12px 12px;
+}
+
+.image-editor__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.image-editor__control {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.image-editor__control input[type="range"] {
+  width: 100%;
+}
+
+.image-editor__rotate-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.image-editor__rotate-row input[type="range"] {
+  flex: 1;
+}
+
+.image-editor__rotate-buttons {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.image-editor__rotate-buttons button {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
 .event-form__preview {
   display: flex;
   align-items: center;
