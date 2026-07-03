@@ -1,6 +1,8 @@
 // 封裝與後端 FastAPI 的所有 HTTP 溝通。
-// 後端固定跑在 http://127.0.0.1:8000（見 backend/README 啟動說明）。
-const BASE_URL = "http://127.0.0.1:8000";
+// BASE_URL 可由建置期環境變數 VITE_API_BASE_URL 覆寫：
+// - Docker 部署設為空字串 → 同源相對路徑（由 nginx 反向代理到後端）
+// - 本機 dev 未設定 → 沿用 http://127.0.0.1:8000，工作流程不變
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 /**
  * 統一處理 fetch 回應：非 2xx 時嘗試取出後端的 detail 訊息並拋出錯誤。
