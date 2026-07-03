@@ -97,7 +97,7 @@ After a page refresh, all events, images, and edit parameters must fully restore
 
 ## GIT 規範
 
-每個 commit 只對「做了什麼」簡短說明而非描述「怎麼做」，內容用繁體中文。
+使用 Conventional Commits，每個 commit 只對「做了什麼」簡短說明而非描述「怎麼做」，內容用繁體中文。
 
 ## Stretch goals (only after core spec is done, in this order)
 
