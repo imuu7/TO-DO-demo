@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-Core spec is implemented, plus stretch goal 1 (drag-and-drop to change event date). See [README.md](README.md) for up-to-date phase status, full API docs, the architecture diagram, and manual test checklists — treat it as the living source of truth for "what's done." [dev_prompt.md](dev_prompt.md) remains the authoritative original spec (Traditional Chinese) if anything is ambiguous.
+Core spec is implemented, plus stretch goal 1 (drag-and-drop to change event date) and stretch goal 3 (Docker deployment). See [README.md](README.md) for up-to-date phase status, full API docs, the architecture diagram, and manual test checklists — treat it as the living source of truth for "what's done." [dev_prompt.md](dev_prompt.md) remains the authoritative original spec (Traditional Chinese) if anything is ambiguous.
 
 ## Tech stack (fixed — do not change per spec)
 
@@ -32,13 +32,19 @@ npm run preview
 
 Both servers must run simultaneously; backend CORS is locked to `localhost:5173` / `127.0.0.1:5173`.
 
+Docker (production deployment, run from repo root under WSL2):
+```bash
+docker compose up --build -d
+```
+Serves the frontend (nginx, static build + reverse proxy) on `http://localhost:8090`; backend is not exposed on the host, only reachable inside the compose network as `http://backend:8000`. `docker compose down -v` wipes the SQLite DB and uploaded images (named volumes) — plain `down` keeps them. See [README.md](README.md#docker-部署生產模式wsl2) for details.
+
 ## Architecture
 
 Two independent processes, no monorepo tooling — frontend talks to backend purely over HTTP (JSON + multipart). Full diagram in [README.md](README.md#架構圖).
 
 **Backend** (`backend/app/`): `main.py` (routes, CORS, static `/uploads` mount) → `crud.py` (DB access) → `models.py` (SQLAlchemy `Event` ORM), with request/response validation in `schemas.py` (Pydantic). Single `events` table; `image_params` is stored as a JSON *string* column and converted to/from a dict at the schema boundary (`parse_image_params` validator in `schemas.py` on read, `_to_orm_kwargs` in `crud.py` on write). `PUT /events/{id}` is a full overwrite, not a partial patch — the frontend always sends the complete event shape.
 
-**Frontend** (`frontend/src/`): `App.jsx` owns month/event state and fetches via `api.js`. `Calendar.jsx` → `DayCell.jsx` render the grid. `DayModal.jsx` → `EventForm.jsx` → `ImageEditor.jsx` → `CropBoxEditor.jsx` handle the per-day event list and the image editor. `CanvasThumbnail.jsx` renders thumbnails.
+**Frontend** (`frontend/src/`): `App.jsx` owns month/event state and fetches via `api.js`. `Calendar.jsx` → `DayCell.jsx` render the grid, using `utils/dateUtils.js` to build the calendar cell matrix and resolve today's date. `DayModal.jsx` → `EventForm.jsx` → `ImageEditor.jsx` → `CropBoxEditor.jsx` handle the per-day event list and the image editor. `CanvasThumbnail.jsx` renders thumbnails.
 
 **Key architectural decision (do not violate)**: image edits (scale/rotation/offset/crop/opacity/brightness/contrast) are never baked into a saved image — they're stored as `image_params` and re-rendered live at every render site via the single shared function `drawImageWithParams` in `frontend/src/utils/imageRender.js`. All three render sites (calendar thumbnail, modal/lightbox preview, form editor live preview) go through this one function so a given parameter set looks visually identical everywhere. If a fourth render site is ever added, it must use `drawImageWithParams` too — never write a parallel canvas-drawing implementation.
 
@@ -60,11 +66,13 @@ Single table `events` — id, title (required), description (nullable), date (`Y
 
 After a page refresh, all events, images, and edit parameters must fully restore from the backend — this round-trip (save → reload → identical render) is the core correctness bar for this project. When adding features that touch persistence or rendering, re-verify this and extend the manual checklists in README rather than replacing them.
 
+There is no automated frontend/backend test suite (see stretch goal 4). Every phase so far has been verified by actually driving a real browser with Playwright (installed ad hoc into a scratch directory, not a repo dependency) against the running dev servers or Docker containers — clicking through the UI, taking screenshots, and cross-checking against direct API calls — rather than relying on type-checking or code review alone. Follow this same pattern for new work, and record what was actually exercised (not just "looks correct") in the AI_COLLABORATION.md entry.
+
 ## Remaining stretch goals (in required order)
 
 1. ~~Drag-and-drop an event to change its date~~ (done)
 2. Multi-image events
-3. Docker deployment (Dockerfile + docker-compose.yml)
+3. ~~Docker deployment (Dockerfile + docker-compose.yml)~~ (done)
 4. Backend pytest unit tests for CRUD
 
 ## 溝通語言

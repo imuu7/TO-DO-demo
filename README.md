@@ -2,7 +2,7 @@
 
 面試take-home專案：一個附帶 Canvas 圖片編輯器的月曆事件管理工具。完整規格見 [dev_prompt.md](dev_prompt.md)（權威來源），開發規範見 [CLAUDE.md](CLAUDE.md)。
 
-> 本檔案隨開發階段持續補完，目前完成到**階段 5（加分項 1：拖曳事件變更日期）**。標示「(TODO)」的段落將在後續階段補上。
+> 本檔案隨開發階段持續補完，目前完成到**加分項 3（Docker 部署）**。標示「(TODO)」的段落將在後續階段補上。
 
 ## 目錄
 
@@ -18,6 +18,7 @@
 - [設計取捨](#設計取捨)
 - [手動測試清單（階段 4：儲存還原驗證）](#手動測試清單階段-4儲存還原驗證)
 - [手動測試清單（階段 5：拖曳事件變更日期）](#手動測試清單階段-5拖曳事件變更日期)
+- [手動測試清單（加分項 3：Docker 部署）](#手動測試清單加分項-3docker-部署)
 
 ## 專案總覽
 
@@ -125,6 +126,22 @@ npm run dev
 
 預設開在 `http://localhost:5173`。
 
+### Docker 部署（生產模式，WSL2）
+
+前端（nginx 靜態服務 + 反向代理）與後端（uvicorn）各自打包為容器，瀏覽器只與前端容器同源溝通，`/events`、`/upload`、`/uploads` 由 nginx 代理到後端容器，因此完全不涉及 CORS。事件資料庫與上傳圖片存於 named volume（避免 Windows 磁碟在 WSL2 下 bind mount 造成的 SQLite 鎖定與效能問題）。
+
+```bash
+# 於 WSL2 shell 內執行
+cd /mnt/e/code/work/to-do
+docker compose up --build -d
+```
+
+啟動後開瀏覽器造訪 `http://localhost:8090`（host port 選 8090 是為了避開常見的 8080 佔用情況，可依需求在 `docker-compose.yml` 的 `frontend.ports` 自行調整）。
+
+- `docker compose ps` 確認兩服務皆為 running（backend 需為 healthy）
+- `docker compose down` 保留資料（named volume 不受影響）；**`docker compose down -v` 會一併清空事件資料庫與上傳圖片**，僅在確定要重置時使用
+- 若要修改程式碼並重新部署，加 `--build` 重新建置映像：`docker compose up --build -d`
+
 ## API 文件
 
 | Method | Path | 說明 |
@@ -149,11 +166,11 @@ npm run dev
 - [x] Canvas 圖片編輯器（縮放/旋轉/拖曳裁切框/位移拖曳/透明度/亮度/對比，三處渲染共用同一函式）
 - [x] 階段 4：儲存還原完整性驗證（見下方清單與執行紀錄）
 - [x] 階段 5（加分項 1）：拖曳事件變更日期
+- [x] 加分項 3：Docker 部署（Dockerfile + docker-compose.yml）
 
 **未完成（stretch goals，尚未開始）**
 
 - [ ] 多圖片事件
-- [ ] Docker 部署（Dockerfile + docker-compose.yml）
 - [ ] 後端 pytest 單元測試
 
 ## 設計取捨
@@ -164,6 +181,9 @@ npm run dev
 - **`PUT /events/{id}` 採整筆覆寫**而非局部 patch：前端表單本來就會帶出完整欄位，整筆覆寫可避免部分更新時忘記帶欄位導致資料不一致
 - **事件拖曳採手刻滑鼠事件（mousedown/mousemove/mouseup）**而非原生 HTML5 Drag and Drop API：與階段 3 裁切框/位移拖曳的實作風格一致，且視覺回饋（來源半透明、目標格高亮/不可放置樣式）完全可控；透過位移門檻（4px）區分「拖曳」與「單純點擊開啟當日 modal」兩種操作
 - **拖曳僅支援月曆格子（DayCell）之間**，不支援從當日 modal 內拖出、也不支援跨月放置：範圍與規格外的細節（如 modal 內拖曳、跨月自動換頁）留待未來需要時再擴充，避免一次做過多未經驗證的互動
+- **Docker 部署採 nginx 反向代理而非直接對外開後端 port**：前端容器同時服務靜態檔並代理 `/events`、`/upload`、`/uploads` 到後端容器，瀏覽器全程同源，徹底避開 CORS 設定，且後端不需對外曝露
+- **資料庫與上傳圖片用 named volume 而非 bind mount**：本專案原始碼放在 Windows 磁碟，WSL2 下透過 drvfs/9p 存取時，bind mount 的 SQLite 檔案鎖行為不可靠且 I/O 較慢；named volume 落於 WSL2 內部 ext4 檔案系統，鎖定語意與效能都正常
+- **前端 `BASE_URL` 改為可由建置期環境變數 `VITE_API_BASE_URL` 覆寫**（`frontend/src/api.js`）：未設定時沿用原本寫死的 `http://127.0.0.1:8000`，本機 dev 工作流程完全不受影響；Docker 建置時注入空字串，使打包後的請求改用同源相對路徑，交由 nginx 代理
 
 ## 手動測試清單（階段 4：儲存還原驗證）
 
@@ -250,5 +270,21 @@ npm run dev
 - 將同一事件拖到月曆上補齊的非本月格子，確認顯示不可放置樣式，且放開後資料庫日期未被變更（放置被正確拒絕）
 - 拖曳測試結束後，對事件卡片做單純點擊，確認仍會開啟當日 modal（未被拖曳邏輯誤判為拖曳）
 - 驗證完成後已清除測試事件（API 確認 DB 已無殘留），並關閉 dev server
+
+## 手動測試清單（加分項 3：Docker 部署）
+
+目標：驗證 Docker 化後前後端能正確協作（同源、無 CORS）、資料在容器重啟/重建後持久化，且不破壞既有的非 Docker 本機開發流程。
+
+執行前準備：於 WSL2 內執行 `docker compose up --build -d`，瀏覽器開 `http://localhost:8090`。
+
+- [x] `docker compose ps`：`backend`、`frontend` 兩服務皆為 running，`backend` 為 healthy
+- [x] 核心 round-trip：透過 API 上傳本機圖片＋建立事件（含完整 image_params：scale/rotation/offset/crop/opacity/brightness/contrast）→ 查詢 `GET /events` 確認欄位與存入值完全一致
+- [x] 前端建置產物確認同源：Docker 建置的 JS bundle 內不含任何寫死的 `127.0.0.1:8000`（`VITE_API_BASE_URL=""` 正確生效），所有 API 呼叫改為相對路徑、交由 nginx 同源代理
+- [x] 上傳圖片實際經由 `/uploads/{filename}`（nginx 代理到後端）成功載入（HTTP 200）
+- [x] `docker compose restart` 後重新查詢，事件與圖片資料完整保留
+- [x] `docker compose down` 後再 `docker compose up -d`（不加 `-v`）：事件、image_params、上傳圖片檔案透過 named volume 持久化，資料與檔案皆仍在
+- [x] 非 Docker 本機開發流程回歸：未設定 `VITE_API_BASE_URL` 時本機 `npm run build` 產物仍含 `127.0.0.1:8000`（fallback 生效，dev 工作流程不受影響）
+- [x] 三處渲染一致性（月曆縮圖／modal 列表縮圖與 lightbox 預覽／表單編輯器即時預覽）在 Docker 部署下皆正常運作，canvas 皆正確渲染且參數數值顯示與存入值一致
+- [x] 拖曳事件變更日期在 Docker 部署下正常運作：後端資料庫日期確實變更、前端刷新後正確反映新日期、原日期不再殘留，且拖曳結束後單純點擊仍可正常開啟當日 modal（未被拖曳邏輯誤判）
 
 詳細協作紀錄見 [AI_COLLABORATION.md](AI_COLLABORATION.md)。
