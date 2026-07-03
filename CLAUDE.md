@@ -32,11 +32,11 @@ npm run preview
 
 Both servers must run simultaneously; backend CORS is locked to `localhost:5173` / `127.0.0.1:5173`.
 
-Docker (production deployment, run from repo root under WSL2):
+Docker (production deployment, works from any OS with Docker Desktop / Docker Engine — Windows, macOS, or Linux), run from repo root:
 ```bash
 docker compose up --build -d
 ```
-Serves the frontend (nginx, static build + reverse proxy) on `http://localhost:8090`; backend is not exposed on the host, only reachable inside the compose network as `http://backend:8000`. `docker compose down -v` wipes the SQLite DB and uploaded images (named volumes) — plain `down` keeps them. See [README.md](README.md#docker-部署生產模式wsl2) for details.
+Serves the frontend (nginx, static build + reverse proxy) on `http://localhost:8090`; backend is not exposed on the host, only reachable inside the compose network as `http://backend:8000`. `docker compose down -v` wipes the SQLite DB and uploaded images (named volumes) — plain `down` keeps them. See [README.md](README.md#docker-部署生產模式) for details.
 
 ## Architecture
 

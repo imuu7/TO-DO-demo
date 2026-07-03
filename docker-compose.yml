@@ -1,10 +1,10 @@
-# 生產部署（WSL2 下執行）：docker compose up --build -d
+# 生產部署：docker compose up --build -d
 services:
   backend:
     build: ./backend
     restart: unless-stopped
     volumes:
-      # named volume 存於 WSL2 ext4，避免 Windows 磁碟 bind mount 的 SQLite 鎖與效能問題
+      # 使用 named volume（而非 bind mount）以跨平台一致運作，避免部分環境下 bind mount 造成的 SQLite 鎖定與效能問題（例如 Windows 主機經 WSL2 drvfs 存取時）
       - db-data:/app/data          # events.db（WORKDIR = /app/data）
       - uploads-data:/app/uploads  # 上傳圖片
     healthcheck:

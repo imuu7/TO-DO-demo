@@ -126,13 +126,12 @@ npm run dev
 
 預設開在 `http://localhost:5173`。
 
-### Docker 部署（生產模式，WSL2）
+### Docker 部署（生產模式）
 
-前端（nginx 靜態服務 + 反向代理）與後端（uvicorn）各自打包為容器，瀏覽器只與前端容器同源溝通，`/events`、`/upload`、`/uploads` 由 nginx 代理到後端容器，因此完全不涉及 CORS。事件資料庫與上傳圖片存於 named volume（避免 Windows 磁碟在 WSL2 下 bind mount 造成的 SQLite 鎖定與效能問題）。
+前端（nginx 靜態服務 + 反向代理）與後端（uvicorn）各自打包為容器，瀏覽器只與前端容器同源溝通，`/events`、`/upload`、`/uploads` 由 nginx 代理到後端容器，因此完全不涉及 CORS。事件資料庫與上傳圖片存於 named volume（由 Docker 管理，可跨平台一致運作，並避免部分環境下 bind mount 造成的 SQLite 鎖定與效能問題）。
 
 ```bash
-# 於 WSL2 shell 內執行
-cd /mnt/e/code/work/to-do
+# 於專案根目錄執行（Windows / macOS / Linux 皆可，只要已安裝 Docker Desktop 或 Docker Engine）
 docker compose up --build -d
 ```
 
@@ -182,7 +181,7 @@ docker compose up --build -d
 - **事件拖曳採手刻滑鼠事件（mousedown/mousemove/mouseup）**而非原生 HTML5 Drag and Drop API：與階段 3 裁切框/位移拖曳的實作風格一致，且視覺回饋（來源半透明、目標格高亮/不可放置樣式）完全可控；透過位移門檻（4px）區分「拖曳」與「單純點擊開啟當日 modal」兩種操作
 - **拖曳僅支援月曆格子（DayCell）之間**，不支援從當日 modal 內拖出、也不支援跨月放置：範圍與規格外的細節（如 modal 內拖曳、跨月自動換頁）留待未來需要時再擴充，避免一次做過多未經驗證的互動
 - **Docker 部署採 nginx 反向代理而非直接對外開後端 port**：前端容器同時服務靜態檔並代理 `/events`、`/upload`、`/uploads` 到後端容器，瀏覽器全程同源，徹底避開 CORS 設定，且後端不需對外曝露
-- **資料庫與上傳圖片用 named volume 而非 bind mount**：本專案原始碼放在 Windows 磁碟，WSL2 下透過 drvfs/9p 存取時，bind mount 的 SQLite 檔案鎖行為不可靠且 I/O 較慢；named volume 落於 WSL2 內部 ext4 檔案系統，鎖定語意與效能都正常
+- **資料庫與上傳圖片用 named volume 而非 bind mount**：named volume 由 Docker 自行管理儲存位置，與 host 檔案系統/作業系統無關，可跨平台一致運作；相對地，bind mount 在部分環境（例如本專案原始碼放在 Windows 磁碟、經 WSL2 的 drvfs/9p 存取時）會有 SQLite 檔案鎖行為不可靠、I/O 較慢的已知問題
 - **前端 `BASE_URL` 改為可由建置期環境變數 `VITE_API_BASE_URL` 覆寫**（`frontend/src/api.js`）：未設定時沿用原本寫死的 `http://127.0.0.1:8000`，本機 dev 工作流程完全不受影響；Docker 建置時注入空字串，使打包後的請求改用同源相對路徑，交由 nginx 代理
 
 ## 手動測試清單（階段 4：儲存還原驗證）
@@ -275,7 +274,7 @@ docker compose up --build -d
 
 目標：驗證 Docker 化後前後端能正確協作（同源、無 CORS）、資料在容器重啟/重建後持久化，且不破壞既有的非 Docker 本機開發流程。
 
-執行前準備：於 WSL2 內執行 `docker compose up --build -d`，瀏覽器開 `http://localhost:8090`。
+執行前準備：於專案根目錄執行 `docker compose up --build -d`（Windows / macOS / Linux 皆可），瀏覽器開 `http://localhost:8090`。
 
 - [x] `docker compose ps`：`backend`、`frontend` 兩服務皆為 running，`backend` 為 healthy
 - [x] 核心 round-trip：透過 API 上傳本機圖片＋建立事件（含完整 image_params：scale/rotation/offset/crop/opacity/brightness/contrast）→ 查詢 `GET /events` 確認欄位與存入值完全一致
