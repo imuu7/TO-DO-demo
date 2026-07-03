@@ -4,84 +4,68 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-This repository currently contains only [dev_prompt.md](dev_prompt.md) — no application code exists yet. That file is the full specification (in Traditional Chinese) for a take-home interview project: a "Calendar To-do Editor" (月曆 To-do 編輯器) with a canvas-based image editor. Treat `dev_prompt.md` as the authoritative spec; if it conflicts with anything below, the spec wins.
-
-Once implementation begins, this section and the commands below should be updated to reflect the real project layout (expected: `frontend/` for the Vite React app, `backend/` for the FastAPI app).
+Core spec is implemented, plus stretch goal 1 (drag-and-drop to change event date). See [README.md](README.md) for up-to-date phase status, full API docs, the architecture diagram, and manual test checklists — treat it as the living source of truth for "what's done." [dev_prompt.md](dev_prompt.md) remains the authoritative original spec (Traditional Chinese) if anything is ambiguous.
 
 ## Tech stack (fixed — do not change per spec)
 
-- **Frontend**: React (Vite), plain CSS (no CSS framework), Canvas API for image editing
-- **Backend**: Python FastAPI
-- **Database**: SQLite via SQLAlchemy
+- **Frontend**: React 19 (Vite), plain CSS (no CSS framework), Canvas API for image editing
+- **Backend**: Python FastAPI + SQLAlchemy, SQLite (`backend/events.db`)
 - **Image storage**: local files under `backend/uploads/`, or an external URL recorded in the DB instead of an upload
-- Frontend and backend are separate processes/servers (no monorepo tooling like Turborepo assumed)
+- Frontend and backend are separate processes/servers (no monorepo tooling)
 
-## Expected commands (once scaffolded)
+## Commands
 
-No package.json / requirements.txt exist yet. When scaffolding:
-- Backend: FastAPI app run via `uvicorn`, dependencies managed via `requirements.txt` or `pyproject.toml`
-- Frontend: standard Vite React app (`npm install`, `npm run dev`, `npm run build`)
-- A top-level `README.md` must document exact startup commands for both — this is a required deliverable, not optional documentation
-- Optional (stretch goal, do only after core features work): `Dockerfile` + `docker-compose.yml` for combined deployment
-- Optional (stretch goal): backend `pytest` unit tests for CRUD endpoints
+Backend (from `backend/`):
+```bash
+./.venv/Scripts/python.exe -m uvicorn app.main:app --reload --port 8000
+```
+Serves on `http://127.0.0.1:8000`. Deps in `backend/requirements.txt`, installed into `backend/.venv`. No test suite exists yet (pytest CRUD tests are an unstarted stretch goal).
+
+Frontend (from `frontend/`):
+```bash
+npm install
+npm run dev      # Vite dev server, http://localhost:5173
+npm run build
+npm run lint      # oxlint
+npm run preview
+```
+
+Both servers must run simultaneously; backend CORS is locked to `localhost:5173` / `127.0.0.1:5173`.
+
+## Architecture
+
+Two independent processes, no monorepo tooling — frontend talks to backend purely over HTTP (JSON + multipart). Full diagram in [README.md](README.md#架構圖).
+
+**Backend** (`backend/app/`): `main.py` (routes, CORS, static `/uploads` mount) → `crud.py` (DB access) → `models.py` (SQLAlchemy `Event` ORM), with request/response validation in `schemas.py` (Pydantic). Single `events` table; `image_params` is stored as a JSON *string* column and converted to/from a dict at the schema boundary (`parse_image_params` validator in `schemas.py` on read, `_to_orm_kwargs` in `crud.py` on write). `PUT /events/{id}` is a full overwrite, not a partial patch — the frontend always sends the complete event shape.
+
+**Frontend** (`frontend/src/`): `App.jsx` owns month/event state and fetches via `api.js`. `Calendar.jsx` → `DayCell.jsx` render the grid. `DayModal.jsx` → `EventForm.jsx` → `ImageEditor.jsx` → `CropBoxEditor.jsx` handle the per-day event list and the image editor. `CanvasThumbnail.jsx` renders thumbnails.
+
+**Key architectural decision (do not violate)**: image edits (scale/rotation/offset/crop/opacity/brightness/contrast) are never baked into a saved image — they're stored as `image_params` and re-rendered live at every render site via the single shared function `drawImageWithParams` in `frontend/src/utils/imageRender.js`. All three render sites (calendar thumbnail, modal/lightbox preview, form editor live preview) go through this one function so a given parameter set looks visually identical everywhere. If a fourth render site is ever added, it must use `drawImageWithParams` too — never write a parallel canvas-drawing implementation.
+
+Unit conventions inside `image_params` (documented at the top of `imageRender.js` and mirrored in `schemas.py`/README): `crop.*` is a ratio (0–1) of the *original image*; `offsetX/offsetY` is a ratio of the *canvas* size (not pixels), so the same params look proportionally identical on a small thumbnail and a large preview; `scale` is relative to the cropped image "contain-fit centered" in the canvas; `rotation` is degrees, clockwise positive; `brightness`/`contrast` map to CSS filter multipliers (1 = unchanged).
+
+Known non-blocking edge case (see README "設計取捨"): `rotation` values outside ±180° (only reachable via direct API writes, not through the UI) display correctly in the numeric label but the range slider's handle position visually clamps — data integrity is unaffected.
 
 ## Data model
 
-Single table `events`:
-
-| field | type | notes |
-|---|---|---|
-| id | int | PK |
-| title | str | required |
-| description | str | nullable |
-| date | str | `YYYY-MM-DD`, required |
-| time | str | `HH:MM`, nullable |
-| image_source | str | nullable; local filename or external URL |
-| image_type | enum | `upload` / `url` / `none` |
-| image_params | JSON string | see below |
-
-`image_params` shape (stored as JSON, never as a pre-baked/rendered image):
-```json
-{
-  "scale": 1.0,
-  "rotation": 0,
-  "offsetX": 0,
-  "offsetY": 0,
-  "crop": {"x": 0, "y": 0, "width": 1, "height": 1},
-  "opacity": 1.0,
-  "brightness": 1.0,
-  "contrast": 1.0
-}
-```
-
-**Key architectural decision**: image edits (scale/rotation/crop/opacity/brightness/contrast) are stored as parameters, not as a flattened/baked image. Every place that renders an event image — calendar thumbnail, modal preview, form editor preview — must apply `image_params` via Canvas at render time. This must stay consistent across all three render sites.
+Single table `events` — id, title (required), description (nullable), date (`YYYY-MM-DD`, required), time (`HH:MM`, nullable), image_source (nullable), image_type (`upload`/`url`/`none`), image_params (JSON string). Full field docs and the `image_params` JSON shape are in [README.md](README.md#資料結構).
 
 ## API surface
 
-- `POST /events` — create
-- `GET /events?month=YYYY-MM` — list events for a given month
-- `PUT /events/{id}` — update
-- `DELETE /events/{id}` — delete
-- `POST /upload` — upload image, returns filename
-- `GET /uploads/{filename}` — static image serving
-- CORS must be open to the frontend dev server origin
-
-## Frontend structure (per spec)
-
-- Month calendar grid: shows year/month header, weekday row, prev/next month navigation, jump-to-specific-month
-- Each date cell shows that day's events (title + image thumbnail), with a "+N" overflow indicator when there are more events than fit
-- Clicking a date cell opens a modal listing that day's events, with create/edit/delete/preview actions inline
-- Event form fields: title (required, validated), description, date, time, image (upload XOR external URL — mutually exclusive, not both)
-- Canvas-based image editor exposes: zoom slider, rotation (slider or 90° step buttons + fine adjustment), drag-to-reposition, crop/visible-area control, opacity slider, brightness + contrast sliders, live preview
+- `POST /events` / `GET /events?month=YYYY-MM` / `PUT /events/{id}` / `DELETE /events/{id}`
+- `POST /upload` (multipart, image/* only) → `{filename}`; `GET /uploads/{filename}` static serving
+- Errors are `{"detail": "..."}` with 400 (validation/non-image) or 404 (not found)
 
 ## Verification requirement
 
-After a page refresh, all events, images, and edit parameters must fully restore from the backend — this round-trip (save → reload → identical render) is the core correctness bar for the project, called out explicitly in the spec as its own phase. When implementing, provide a manual test checklist for this.
+After a page refresh, all events, images, and edit parameters must fully restore from the backend — this round-trip (save → reload → identical render) is the core correctness bar for this project. When adding features that touch persistence or rendering, re-verify this and extend the manual checklists in README rather than replacing them.
 
-## Required documentation deliverables
+## Remaining stretch goals (in required order)
 
-- `README.md`: project overview, text-based architecture diagram, data structures, image-params design rationale, frontend/backend data flow, startup instructions, API docs, done/not-done list, design tradeoffs
-- `AI_COLLABORATION.md`: log entries as work happens, with columns: Prompt、AI 回覆摘要、採用/修改、修改原因、驗證方式 (see AI 協作紀錄 below — this supersedes the original spec's "leave it blank" note)
+1. ~~Drag-and-drop an event to change its date~~ (done)
+2. Multi-image events
+3. Docker deployment (Dockerfile + docker-compose.yml)
+4. Backend pytest unit tests for CRUD
 
 ## 溝通語言
 
@@ -98,13 +82,6 @@ After a page refresh, all events, images, and edit parameters must fully restore
 ## GIT 規範
 
 使用 Conventional Commits，每個 commit 只對「做了什麼」簡短說明而非描述「怎麼做」，內容用繁體中文。
-
-## Stretch goals (only after core spec is done, in this order)
-
-1. Drag-and-drop an event to change its date
-2. Multi-image events
-3. Docker deployment
-4. Backend pytest unit tests for CRUD
 
 ## Output conventions from the spec (apply when generating code for this project)
 
