@@ -1,0 +1,32 @@
+# 生產部署（WSL2 下執行）：docker compose up --build -d
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    volumes:
+      # named volume 存於 WSL2 ext4，避免 Windows 磁碟 bind mount 的 SQLite 鎖與效能問題
+      - db-data:/app/data          # events.db（WORKDIR = /app/data）
+      - uploads-data:/app/uploads  # 上傳圖片
+    healthcheck:
+      # slim 映像無 curl，改用 python 標準庫；openapi.json 恆為 200
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/openapi.json')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ""   # 空字串 → 打包成同源相對路徑
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  db-data:
+  uploads-data:

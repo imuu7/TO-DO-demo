@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.gitignore
+README.md
+.oxlintrc.json
+Dockerfile
+.dockerignore
